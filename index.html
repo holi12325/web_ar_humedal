@@ -5,40 +5,64 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-    
-    <script>
-      AFRAME.registerComponent('freeze-tracking', {
-        init: function () {
-          this.congelado = false;
-          this.matrizGuardada = new THREE.Matrix4();
-          this.timeoutId = null;
-          
-          this.el.addEventListener('targetFound', () => {
-            // CORRECCIÓN 2: Cancelar timeout previo antes de crear uno nuevo
-            clearTimeout(this.timeoutId);
 
-            this.timeoutId = setTimeout(() => {
-              this.congelado = true;
-              // CORRECCIÓN 1: Desactivar matrixAutoUpdate para que Three.js
-              // no sobreescriba nuestra matriz congelada en cada frame
-              this.el.object3D.matrixAutoUpdate = false;
-              this.matrizGuardada.copy(this.el.object3D.matrix);
-              this.el.object3D.matrix.copy(this.matrizGuardada);
-            }, 500);
+    <script>
+      AFRAME.registerComponent('smooth-tracking', {
+        schema: {
+          // Factor de suavizado: 0 = sin movimiento, 1 = sin suavizado
+          // 0.15 da un lag visual muy pequeño pero elimina casi todo el jitter
+          lerpFactor: { type: 'number', default: 0.15 }
+        },
+
+        init: function () {
+          this.isTracking = false;
+
+          // Vectores de destino (lo que MindAR reporta)
+          this.targetPos = new THREE.Vector3();
+          this.targetQuat = new THREE.Quaternion();
+          this.targetScale = new THREE.Vector3(1, 1, 1);
+
+          // Vectores actuales (lo que realmente se renderiza, suavizados)
+          this.currentPos = new THREE.Vector3();
+          this.currentQuat = new THREE.Quaternion();
+          this.currentScale = new THREE.Vector3(1, 1, 1);
+
+          this.el.addEventListener('targetFound', () => {
+            this.isTracking = true;
+
+            // Al encontrar el target por primera vez, inicializamos
+            // current == target para evitar un "vuelo" desde el origen
+            this.currentPos.copy(this.el.object3D.position);
+            this.currentQuat.copy(this.el.object3D.quaternion);
+            this.currentScale.copy(this.el.object3D.scale);
           });
 
           this.el.addEventListener('targetLost', () => {
-            clearTimeout(this.timeoutId);
-            this.congelado = false;
-            // CORRECCIÓN 1: Reactivar matrixAutoUpdate al soltar el freeze
-            this.el.object3D.matrixAutoUpdate = true;
+            this.isTracking = false;
           });
         },
 
-        tick: function () {
-          if (this.congelado) {
-            this.el.object3D.matrix.copy(this.matrizGuardada);
-          }
+        tick: function (time, delta) {
+          if (!this.isTracking) return;
+
+          // Factor de lerp ajustado al delta para que sea independiente del framerate
+          // A 60fps delta≈16ms → factor≈0.15; a 30fps delta≈33ms → factor≈0.27
+          const t = 1 - Math.pow(1 - this.data.lerpFactor, delta / 16.67);
+
+          // Capturamos la posición "cruda" que MindAR actualiza cada frame
+          this.targetPos.copy(this.el.object3D.position);
+          this.targetQuat.copy(this.el.object3D.quaternion);
+          this.targetScale.copy(this.el.object3D.scale);
+
+          // Interpolamos suavemente hacia el target
+          this.currentPos.lerp(this.targetPos, t);
+          this.currentQuat.slerp(this.targetQuat, t);
+          this.currentScale.lerp(this.targetScale, t);
+
+          // Aplicamos los valores suavizados
+          this.el.object3D.position.copy(this.currentPos);
+          this.el.object3D.quaternion.copy(this.currentQuat);
+          this.el.object3D.scale.copy(this.currentScale);
         }
       });
     </script>
@@ -77,10 +101,10 @@
 
     <a-scene
       id="main-scene"
-      mindar-image="imageTargetSrc: https://raw.githubusercontent.com/holi12325/web_ar_humedal/main/targets.mind; 
-                    filterMinCF: 0.001; 
-                    filterBeta: 10; 
-                    missTolerance: 10; 
+      mindar-image="imageTargetSrc: https://raw.githubusercontent.com/holi12325/web_ar_humedal/main/targets.mind;
+                    filterMinCF: 0.005;
+                    filterBeta: 0.05;
+                    missTolerance: 5;
                     warmupTolerance: 5;"
       color-space="sRGB"
       renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
@@ -88,7 +112,7 @@
       device-orientation-permission-ui="enabled: false"
       embedded
     >
-      
+
       <a-assets>
         <img id="img-0-0" src="https://raw.githubusercontent.com/holi12325/web_ar_humedal/main/index_0_c1.webp" crossorigin="anonymous" />
         <img id="img-0-1" src="https://raw.githubusercontent.com/holi12325/web_ar_humedal/main/index_0_C2.webp" crossorigin="anonymous" />
@@ -110,13 +134,15 @@
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <a-entity id="target-0" mindar-image-target="targetIndex: 0" freeze-tracking>
+      <!-- smooth-tracking reemplaza a freeze-tracking en los 3 targets -->
+
+      <a-entity id="target-0" mindar-image-target="targetIndex: 0" smooth-tracking="lerpFactor: 0.15">
         <a-plane src="#img-0-0" position="0 0 0"    height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
         <a-plane src="#img-0-1" position="0 0 0.15" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
         <a-plane src="#img-0-2" position="0 0 0.30" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
       </a-entity>
 
-      <a-entity id="target-1" mindar-image-target="targetIndex: 1" freeze-tracking>
+      <a-entity id="target-1" mindar-image-target="targetIndex: 1" smooth-tracking="lerpFactor: 0.15">
         <a-plane src="#img-1-0" position="0 0 0"    height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
         <a-plane src="#img-1-1" position="0 0 0.15" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
         <a-plane src="#img-1-2" position="0 0 0.30" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
@@ -126,7 +152,7 @@
         <a-plane src="#img-1-6" position="0 0 0.90" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
       </a-entity>
 
-      <a-entity id="target-2" mindar-image-target="targetIndex: 2" freeze-tracking>
+      <a-entity id="target-2" mindar-image-target="targetIndex: 2" smooth-tracking="lerpFactor: 0.15">
         <a-plane src="#img-2-0" position="0 0 0"    height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
         <a-plane src="#img-2-1" position="0 0 0.15" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
         <a-plane src="#img-2-2" position="0 0 0.30" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
@@ -135,17 +161,14 @@
 
     </a-scene>
 
-    <!-- CORRECCIÓN 4: Script movido fuera de <a-scene>, justo antes de </body> -->
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         const scanningUI = document.querySelector("#scanning-ui");
-
-        // CORRECCIÓN 3: Usar Set en lugar de contador para evitar desincronización
         const targetsActivos = new Set();
 
         for (let i = 0; i < 3; i++) {
           const targetEntity = document.querySelector(`#target-${i}`);
-          
+
           targetEntity.addEventListener("targetFound", () => {
             targetsActivos.add(i);
             scanningUI.style.display = "none";
