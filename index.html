@@ -4,6 +4,40 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    
+    <script>
+      AFRAME.registerComponent('freeze-tracking', {
+        init: function () {
+          this.congelado = false;
+          // Creamos una matriz vacía para guardar la posición, rotación y escala
+          this.matrizGuardada = new THREE.Matrix4();
+          this.timeoutId = null;
+          
+          this.el.addEventListener('targetFound', () => {
+            // Esperamos 500ms para que el tracking se estabilice antes de congelarlo
+            this.timeoutId = setTimeout(() => {
+              this.congelado = true;
+              // Hacemos el "Bake" copiando la matriz exacta de ese frame
+              this.matrizGuardada.copy(this.el.object3D.matrix);
+            }, 500);
+          });
+
+          this.el.addEventListener('targetLost', () => {
+            // Si el usuario aparta la cámara, cancelamos todo y soltamos el freeze
+            clearTimeout(this.timeoutId);
+            this.congelado = false;
+          });
+        },
+        tick: function () {
+          // Si está congelado, sobreescribimos la posición temblorosa de MindAR 
+          // con nuestra matriz guardada en cada frame.
+          if (this.congelado) {
+            this.el.object3D.matrix.copy(this.matrizGuardada);
+          }
+        }
+      });
+    </script>
+
     <style>
       body {
         margin: 0;
@@ -65,58 +99,4 @@
 
         <img id="img-2-0" src="[ENLACE_IMAGEN_2_CAPA_1]" crossorigin="anonymous" />
         <img id="img-2-1" src="[ENLACE_IMAGEN_2_CAPA_2]" crossorigin="anonymous" />
-        <img id="img-2-2" src="[ENLACE_IMAGEN_2_CAPA_3]" crossorigin="anonymous" />
-        <img id="img-2-3" src="[ENLACE_IMAGEN_2_CAPA_4]" crossorigin="anonymous" />
-      </a-assets>
-
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-      <a-entity id="target-0" mindar-image-target="targetIndex: 0">
-        <a-plane src="#img-0-0" position="0 0 0"    height="2" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-0-1" position="0 0 0.15" height="2" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-0-2" position="0 0 0.30" height="2" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-      </a-entity>
-
-      <a-entity id="target-1" mindar-image-target="targetIndex: 1">
-        <a-plane src="#img-1-0" position="0 0 0"    height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-1-1" position="0 0 0.15" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-1-2" position="0 0 0.30" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-1-3" position="0 0 0.45" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-1-4" position="0 0 0.60" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-1-5" position="0 0 0.75" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-1-6" position="0 0 0.90" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-      </a-entity>
-
-      <a-entity id="target-2" mindar-image-target="targetIndex: 2">
-        <a-plane src="#img-2-0" position="0 0 0"    height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-2-1" position="0 0 0.15" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-2-2" position="0 0 0.30" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-        <a-plane src="#img-2-3" position="0 0 0.45" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
-      </a-entity>
-
-      <script>
-        document.addEventListener("DOMContentLoaded", () => {
-          const scanningUI = document.querySelector("#scanning-ui");
-          let targetsEncontrados = 0;
-
-          for (let i = 0; i < 3; i++) {
-            const targetEntity = document.querySelector(`#target-${i}`);
-            
-            targetEntity.addEventListener("targetFound", () => {
-              targetsEncontrados++;
-              scanningUI.style.display = "none";
-            });
-
-            targetEntity.addEventListener("targetLost", () => {
-              targetsEncontrados--;
-              if (targetsEncontrados <= 0) {
-                targetsEncontrados = 0;
-                scanningUI.style.display = "flex";
-              }
-            });
-          }
-        });
-      </script>
-    </a-scene>
-  </body>
-</html>
+        <img id="img-2-2" src="[ENLACE_IMAGEN_2_CAPA
