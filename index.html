@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html>
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,28 +10,32 @@
       AFRAME.registerComponent('freeze-tracking', {
         init: function () {
           this.congelado = false;
-          // Creamos una matriz vacía para guardar la posición, rotación y escala
           this.matrizGuardada = new THREE.Matrix4();
           this.timeoutId = null;
           
           this.el.addEventListener('targetFound', () => {
-            // Esperamos 500ms para que el tracking se estabilice antes de congelarlo
+            // CORRECCIÓN 2: Cancelar timeout previo antes de crear uno nuevo
+            clearTimeout(this.timeoutId);
+
             this.timeoutId = setTimeout(() => {
               this.congelado = true;
-              // Hacemos el "Bake" copiando la matriz exacta de ese frame
+              // CORRECCIÓN 1: Desactivar matrixAutoUpdate para que Three.js
+              // no sobreescriba nuestra matriz congelada en cada frame
+              this.el.object3D.matrixAutoUpdate = false;
               this.matrizGuardada.copy(this.el.object3D.matrix);
+              this.el.object3D.matrix.copy(this.matrizGuardada);
             }, 500);
           });
 
           this.el.addEventListener('targetLost', () => {
-            // Si el usuario aparta la cámara, cancelamos todo y soltamos el freeze
             clearTimeout(this.timeoutId);
             this.congelado = false;
+            // CORRECCIÓN 1: Reactivar matrixAutoUpdate al soltar el freeze
+            this.el.object3D.matrixAutoUpdate = true;
           });
         },
+
         tick: function () {
-          // Si está congelado, sobreescribimos la posición temblorosa de MindAR 
-          // con nuestra matriz guardada en cada frame.
           if (this.congelado) {
             this.el.object3D.matrix.copy(this.matrizGuardada);
           }
@@ -128,29 +133,33 @@
         <a-plane src="#img-2-3" position="0 0 0.45" height="1.5" width="1.5" material="shader: flat; transparent: true; alphaTest: 0.5"></a-plane>
       </a-entity>
 
-      <script>
-        document.addEventListener("DOMContentLoaded", () => {
-          const scanningUI = document.querySelector("#scanning-ui");
-          let targetsEncontrados = 0;
-
-          for (let i = 0; i < 3; i++) {
-            const targetEntity = document.querySelector(`#target-${i}`);
-            
-            targetEntity.addEventListener("targetFound", () => {
-              targetsEncontrados++;
-              scanningUI.style.display = "none";
-            });
-
-            targetEntity.addEventListener("targetLost", () => {
-              targetsEncontrados--;
-              if (targetsEncontrados <= 0) {
-                targetsEncontrados = 0;
-                scanningUI.style.display = "flex";
-              }
-            });
-          }
-        });
-      </script>
     </a-scene>
+
+    <!-- CORRECCIÓN 4: Script movido fuera de <a-scene>, justo antes de </body> -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const scanningUI = document.querySelector("#scanning-ui");
+
+        // CORRECCIÓN 3: Usar Set en lugar de contador para evitar desincronización
+        const targetsActivos = new Set();
+
+        for (let i = 0; i < 3; i++) {
+          const targetEntity = document.querySelector(`#target-${i}`);
+          
+          targetEntity.addEventListener("targetFound", () => {
+            targetsActivos.add(i);
+            scanningUI.style.display = "none";
+          });
+
+          targetEntity.addEventListener("targetLost", () => {
+            targetsActivos.delete(i);
+            if (targetsActivos.size === 0) {
+              scanningUI.style.display = "flex";
+            }
+          });
+        }
+      });
+    </script>
+
   </body>
 </html>
